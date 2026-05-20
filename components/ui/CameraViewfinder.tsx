@@ -14,14 +14,10 @@ interface CameraViewfinderProps {
   onReset: () => void
 }
 
-type PlacingState = 'ball' | 'hole' | 'ready' | 'analyzing' | 'done'
+type Phase = 'ball' | 'hole' | 'ready' | 'analyzing' | 'done'
 
-const STEP_LABELS: Record<PlacingState, string> = {
-  ball: 'Step 1 — Tap to mark your ball',
-  hole: 'Step 2 — Tap to mark the hole',
-  ready: 'Ready — tap Analyze to read the green',
-  analyzing: 'Reading the green…',
-  done: 'Green read complete',
+function haptic() {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10)
 }
 
 export default function CameraViewfinder({ onAnalysisComplete, onReset }: CameraViewfinderProps) {
@@ -32,16 +28,17 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
   const containerRef = useRef<HTMLDivElement>(null)
 
   const [cameraState, setCameraState] = useState<'loading' | 'ready' | 'denied' | 'unavailable'>('loading')
-  const [placingState, setPlacingState] = useState<PlacingState>('ball')
-  const [ballPos, setBallPos] = useState<{ x: number; y: number } | null>(null)
-  const [holePos, setHolePos] = useState<{ x: number; y: number } | null>(null)
+  const [phase, setPhase] = useState<Phase>('ball')
+  const [ballPos, setBallPos] = useState({ x: 0.5, y: 0.72 })
+  const [holePos, setHolePos] = useState({ x: 0.5, y: 0.28 })
   const [analysis, setAnalysis] = useState<GreenAnalysis | null>(null)
 
-  // Refs for animation loop access
-  const stateRef = useRef({ placingState, ballPos, holePos, analysis })
-  stateRef.current = { placingState, ballPos, holePos, analysis }
+  const stateRef = useRef({ phase, ballPos, holePos, analysis })
+  stateRef.current = { phase, ballPos, holePos, analysis }
 
-  // Start camera
+  const ballDragRef = useRef({ active: false, startX: 0, startY: 0, moved: false })
+  const holeDragRef = useRef({ active: false, startX: 0, startY: 0, moved: false })
+
   useEffect(() => {
     let cancelled = false
     async function startCamera() {
@@ -71,7 +68,6 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
     }
   }, [])
 
-  // Canvas draw loop
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -79,7 +75,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
     if (!ctx) return
     const W = canvas.width
     const H = canvas.height
-    const { placingState: ps, ballPos: bp, holePos: hp, analysis: an } = stateRef.current
+    const { phase: ps, ballPos: bp, holePos: hp, analysis: an } = stateRef.current
 
     ctx.clearRect(0, 0, W, H)
 
@@ -101,115 +97,53 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
       ctx.stroke()
     }
 
-    if (!bp) { rafRef.current = requestAnimationFrame(draw); return }
-
-    const bx = bp.x * W
-    const by = bp.y * H
-
-    if (hp) {
+    if (ps === 'done' && an) {
+      const bx = bp.x * W
+      const by = bp.y * H
       const hx = hp.x * W
       const hy = hp.y * H
 
-      if (ps === 'done' && an) {
-        // Compute curved path with proper perpendicular break offset
-        const dx = hx - bx
-        const dy = hy - by
-        const len = Math.sqrt(dx * dx + dy * dy) || 1
-        const perpX = -dy / len
-        const perpY = dx / len
-        const sign = an.breakDirection === 'left' ? 1 : an.breakDirection === 'right' ? -1 : 0
-        const offset = an.breakIntensity * 18 * sign
-        const cpx = (bx + hx) / 2 + perpX * offset
-        const cpy = (by + hy) / 2 + perpY * offset
+      const ddx = hx - bx
+      const ddy = hy - by
+      const len = Math.sqrt(ddx * ddx + ddy * ddy) || 1
+      const perpX = -ddy / len
+      const perpY = ddx / len
+      const sign = an.breakDirection === 'left' ? 1 : an.breakDirection === 'right' ? -1 : 0
+      const offset = an.breakIntensity * 18 * sign
+      const cpx = (bx + hx) / 2 + perpX * offset
+      const cpy = (by + hy) / 2 + perpY * offset
 
-        // Glow
-        ctx.beginPath()
-        ctx.moveTo(bx, by)
-        ctx.quadraticCurveTo(cpx, cpy, hx, hy)
-        ctx.strokeStyle = 'rgba(76,175,80,0.25)'
-        ctx.lineWidth = 8
-        ctx.setLineDash([])
-        ctx.stroke()
+      // Glow
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cpx, cpy, hx, hy)
+      ctx.strokeStyle = 'rgba(76,175,80,0.25)'; ctx.lineWidth = 8; ctx.setLineDash([]); ctx.stroke()
 
-        // Main path
-        ctx.beginPath()
-        ctx.moveTo(bx, by)
-        ctx.quadraticCurveTo(cpx, cpy, hx, hy)
-        ctx.strokeStyle = 'rgba(76,175,80,0.9)'
-        ctx.lineWidth = 2.5
-        ctx.setLineDash([8, 4])
-        ctx.stroke()
-        ctx.setLineDash([])
-
-        // Chevrons at 33% and 66%
-        for (const t of [0.33, 0.66]) {
-          const ax = (1-t)*(1-t)*bx + 2*(1-t)*t*cpx + t*t*hx
-          const ay = (1-t)*(1-t)*by + 2*(1-t)*t*cpy + t*t*hy
-          const t2 = Math.min(t + 0.02, 1)
-          const ax2 = (1-t2)*(1-t2)*bx + 2*(1-t2)*t2*cpx + t2*t2*hx
-          const ay2 = (1-t2)*(1-t2)*by + 2*(1-t2)*t2*cpy + t2*t2*hy
-          const angle = Math.atan2(ay2 - ay, ax2 - ax)
-          ctx.save()
-          ctx.translate(ax, ay)
-          ctx.rotate(angle)
-          ctx.strokeStyle = 'rgba(76,175,80,0.9)'
-          ctx.lineWidth = 2
-          ctx.beginPath()
-          ctx.moveTo(-5, -4); ctx.lineTo(0, 0); ctx.lineTo(-5, 4)
-          ctx.stroke()
-          ctx.restore()
-        }
-
-        // Aim point (where to aim, offset by break)
-        const aimOffsetPx = an.breakIntensity * 6 * sign
-        const aimX = hx + perpX * aimOffsetPx * 2
-        const aimY = hy + perpY * aimOffsetPx * 2
-        ctx.beginPath()
-        ctx.arc(aimX, aimY, 6, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(255,183,77,0.85)'
-        ctx.fill()
-        ctx.strokeStyle = 'white'
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-      } else {
-        // Simple dashed line between markers in 'ready' state
-        ctx.beginPath()
-        ctx.moveTo(bx, by)
-        ctx.lineTo(hx, hy)
-        ctx.strokeStyle = 'rgba(76,175,80,0.5)'
-        ctx.lineWidth = 1.5
-        ctx.setLineDash([5, 4])
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-
-      // Target zone
-      ctx.beginPath()
-      ctx.arc(hx, hy, 16, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(76,175,80,0.6)'
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([3, 3])
-      ctx.stroke()
+      // Main path
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cpx, cpy, hx, hy)
+      ctx.strokeStyle = 'rgba(76,175,80,0.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([8, 4]); ctx.stroke()
       ctx.setLineDash([])
 
-      // Hole marker
-      ctx.beginPath(); ctx.arc(hx, hy, 9, 0, Math.PI * 2)
-      ctx.fillStyle = '#1a1a1a'; ctx.fill()
-      ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(hx, hy - 9); ctx.lineTo(hx, hy - 37)
-      ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(hx, hy - 37); ctx.lineTo(hx + 12, hy - 30); ctx.lineTo(hx, hy - 23)
-      ctx.closePath(); ctx.fillStyle = '#ef4444'; ctx.fill()
-    }
+      // Chevrons
+      for (const t of [0.33, 0.66]) {
+        const ax = (1-t)*(1-t)*bx + 2*(1-t)*t*cpx + t*t*hx
+        const ay = (1-t)*(1-t)*by + 2*(1-t)*t*cpy + t*t*hy
+        const t2 = Math.min(t + 0.02, 1)
+        const ax2 = (1-t2)*(1-t2)*bx + 2*(1-t2)*t2*cpx + t2*t2*hx
+        const ay2 = (1-t2)*(1-t2)*by + 2*(1-t2)*t2*cpy + t2*t2*hy
+        ctx.save()
+        ctx.translate(ax, ay); ctx.rotate(Math.atan2(ay2 - ay, ax2 - ax))
+        ctx.strokeStyle = 'rgba(76,175,80,0.9)'; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(-5, -4); ctx.lineTo(0, 0); ctx.lineTo(-5, 4); ctx.stroke()
+        ctx.restore()
+      }
 
-    // Ball marker
-    ctx.shadowColor = 'rgba(255,255,255,0.5)'
-    ctx.shadowBlur = 8
-    ctx.beginPath(); ctx.arc(bx, by, 8, 0, Math.PI * 2)
-    ctx.fillStyle = 'white'; ctx.fill()
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke()
+      // Aim point
+      const aimOffsetPx = an.breakIntensity * 6 * sign
+      const aimX = hx + perpX * aimOffsetPx * 2
+      const aimY = hy + perpY * aimOffsetPx * 2
+      ctx.beginPath(); ctx.arc(aimX, aimY, 6, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,183,77,0.85)'; ctx.fill()
+      ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke()
+    }
 
     rafRef.current = requestAnimationFrame(draw)
   }, [])
@@ -220,45 +154,67 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
     return () => cancelAnimationFrame(rafRef.current)
   }, [cameraState, draw])
 
-  function haptic() {
-    if ('vibrate' in navigator) navigator.vibrate(10)
-  }
-
-  function getPosition(clientX: number, clientY: number) {
-    const el = containerRef.current
-    if (!el) return null
-    const rect = el.getBoundingClientRect()
+  function getContainerPos(clientX: number, clientY: number) {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return null
     return {
-      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+      x: Math.max(0.06, Math.min(0.94, (clientX - rect.left) / rect.width)),
+      y: Math.max(0.06, Math.min(0.94, (clientY - rect.top) / rect.height)),
     }
   }
 
-  function handleTap(clientX: number, clientY: number) {
-    if (placingState === 'analyzing' || placingState === 'done') return
-    const pos = getPosition(clientX, clientY)
-    if (!pos) return
-    haptic()
-    if (placingState === 'ball') {
-      setBallPos(pos)
-      setPlacingState('hole')
-    } else if (placingState === 'hole') {
-      setHolePos(pos)
-      setPlacingState('ready')
+  function onBallPointerDown(e: React.PointerEvent) {
+    if (phase !== 'ball') return
+    e.stopPropagation(); e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    ballDragRef.current = { active: true, startX: e.clientX, startY: e.clientY, moved: false }
+  }
+  function onBallPointerMove(e: React.PointerEvent) {
+    if (!ballDragRef.current.active) return
+    e.stopPropagation()
+    if (Math.hypot(e.clientX - ballDragRef.current.startX, e.clientY - ballDragRef.current.startY) > 8) {
+      ballDragRef.current.moved = true
+      const pos = getContainerPos(e.clientX, e.clientY)
+      if (pos) setBallPos(pos)
     }
+  }
+  function onBallPointerUp(e: React.PointerEvent) {
+    if (!ballDragRef.current.active) return
+    e.stopPropagation()
+    ballDragRef.current.active = false
+    if (!ballDragRef.current.moved) { haptic(); setPhase('hole') }
+  }
+
+  function onHolePointerDown(e: React.PointerEvent) {
+    if (phase !== 'hole') return
+    e.stopPropagation(); e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    holeDragRef.current = { active: true, startX: e.clientX, startY: e.clientY, moved: false }
+  }
+  function onHolePointerMove(e: React.PointerEvent) {
+    if (!holeDragRef.current.active) return
+    e.stopPropagation()
+    if (Math.hypot(e.clientX - holeDragRef.current.startX, e.clientY - holeDragRef.current.startY) > 8) {
+      holeDragRef.current.moved = true
+      const pos = getContainerPos(e.clientX, e.clientY)
+      if (pos) setHolePos(pos)
+    }
+  }
+  function onHolePointerUp(e: React.PointerEvent) {
+    if (!holeDragRef.current.active) return
+    e.stopPropagation()
+    holeDragRef.current.active = false
+    if (!holeDragRef.current.moved) { haptic(); setPhase('ready') }
   }
 
   async function handleAnalyze() {
-    if (!ballPos || !holePos || !videoRef.current) return
+    if (!videoRef.current) return
     haptic()
-    setPlacingState('analyzing')
+    setPhase('analyzing')
 
-    // Capture video frame as JPEG base64
     const capture = document.createElement('canvas')
-    capture.width = 640
-    capture.height = 360
-    const ctx = capture.getContext('2d')
-    ctx?.drawImage(videoRef.current, 0, 0, 640, 360)
+    capture.width = 640; capture.height = 360
+    capture.getContext('2d')?.drawImage(videoRef.current, 0, 0, 640, 360)
     const imageBase64 = capture.toDataURL('image/jpeg', 0.8).split(',')[1]
 
     try {
@@ -269,7 +225,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
       })
       const data = await res.json()
       setAnalysis(data.analysis)
-      setPlacingState('done')
+      setPhase('done')
       onAnalysisComplete({ ballPos, holePos, analysis: data.analysis })
     } catch {
       const fallback: GreenAnalysis = {
@@ -278,7 +234,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
         notes: 'Analysis failed — using defaults',
       }
       setAnalysis(fallback)
-      setPlacingState('done')
+      setPhase('done')
       onAnalysisComplete({ ballPos, holePos, analysis: fallback })
     }
     haptic()
@@ -286,58 +242,103 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
 
   function handleReset() {
     haptic()
-    setBallPos(null)
-    setHolePos(null)
+    setBallPos({ x: 0.5, y: 0.72 })
+    setHolePos({ x: 0.5, y: 0.28 })
     setAnalysis(null)
-    setPlacingState('ball')
+    setPhase('ball')
     onReset()
   }
+
+  const showBall = cameraState === 'ready' && phase !== 'analyzing'
+  const showHole = cameraState === 'ready' && phase !== 'analyzing' && phase !== 'ball'
 
   return (
     <div className="flex flex-col gap-2">
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden rounded-2xl bg-green-950 select-none"
-        style={{ height: 340, cursor: placingState === 'done' || placingState === 'analyzing' ? 'default' : 'crosshair' }}
-        onClick={e => handleTap(e.clientX, e.clientY)}
-        onTouchEnd={e => {
-          e.preventDefault()
-          const t = e.changedTouches[0]
-          handleTap(t.clientX, t.clientY)
-        }}
+        style={{ height: 340 }}
       >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-        <canvas
-          ref={canvasRef}
-          width={640}
-          height={340}
-          className="absolute inset-0 w-full h-full"
-        />
+        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+        <canvas ref={canvasRef} width={640} height={340} className="absolute inset-0 w-full h-full" />
+
+        {/* Ball circle — white, draggable in 'ball' phase */}
+        {showBall && (
+          <div
+            className={phase === 'ball' ? 'animate-pulse' : ''}
+            style={{
+              position: 'absolute',
+              left: `${ballPos.x * 100}%`,
+              top: `${ballPos.y * 100}%`,
+              transform: 'translate(-50%, -50%)',
+              width: 52, height: 52,
+              borderRadius: '50%',
+              border: phase === 'ball' ? '2.5px solid white' : '2px solid rgba(255,255,255,0.45)',
+              backgroundColor: phase === 'ball' ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)',
+              boxShadow: phase === 'ball' ? '0 0 0 5px rgba(255,255,255,0.12), 0 0 16px rgba(255,255,255,0.25)' : 'none',
+              cursor: phase === 'ball' ? 'grab' : 'default',
+              touchAction: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              userSelect: 'none',
+            }}
+            onPointerDown={onBallPointerDown}
+            onPointerMove={onBallPointerMove}
+            onPointerUp={onBallPointerUp}
+          >
+            <span style={{ color: 'white', fontSize: 9, fontWeight: 700, letterSpacing: 0.5, pointerEvents: 'none' }}>
+              {phase === 'ball' ? 'BALL' : '●'}
+            </span>
+          </div>
+        )}
+
+        {/* Hole circle — gold, draggable in 'hole' phase */}
+        {showHole && (
+          <div
+            className={phase === 'hole' ? 'animate-pulse' : ''}
+            style={{
+              position: 'absolute',
+              left: `${holePos.x * 100}%`,
+              top: `${holePos.y * 100}%`,
+              transform: 'translate(-50%, -50%)',
+              width: 52, height: 52,
+              borderRadius: '50%',
+              border: phase === 'hole' ? '2.5px solid #ffb74d' : '2px solid rgba(255,183,77,0.45)',
+              backgroundColor: phase === 'hole' ? 'rgba(255,183,77,0.18)' : 'rgba(255,183,77,0.08)',
+              boxShadow: phase === 'hole' ? '0 0 0 5px rgba(255,183,77,0.12), 0 0 16px rgba(255,183,77,0.25)' : 'none',
+              cursor: phase === 'hole' ? 'grab' : 'default',
+              touchAction: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              userSelect: 'none',
+            }}
+            onPointerDown={onHolePointerDown}
+            onPointerMove={onHolePointerMove}
+            onPointerUp={onHolePointerUp}
+          >
+            <span style={{ color: '#ffb74d', fontSize: 9, fontWeight: 700, letterSpacing: 0.5, pointerEvents: 'none' }}>
+              {phase === 'hole' ? 'HOLE' : '⛳'}
+            </span>
+          </div>
+        )}
 
         {/* Step label */}
-        {cameraState === 'ready' && (
+        {cameraState === 'ready' && phase !== 'analyzing' && phase !== 'done' && (
           <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none">
-            <span className="bg-black/50 text-green-300 text-[11px] px-3 py-1 rounded-full">
-              {STEP_LABELS[placingState]}
+            <span className="bg-black/60 text-white text-[11px] px-3 py-1 rounded-full">
+              {phase === 'ball' && 'Drag white circle to your ball · tap to place'}
+              {phase === 'hole' && 'Drag gold circle to the hole · tap to place'}
+              {phase === 'ready' && 'Tap Analyze to read the green'}
             </span>
           </div>
         )}
 
         {/* Analyzing overlay */}
-        {placingState === 'analyzing' && (
+        {phase === 'analyzing' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 gap-2">
             <div className="w-8 h-8 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
             <span className="text-green-300 text-sm font-semibold">Reading green…</span>
           </div>
         )}
 
-        {/* Camera loading / error states */}
         {cameraState === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-green-950/90 gap-2">
             <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
@@ -360,21 +361,20 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset }: Camera
         )}
       </div>
 
-      {/* Action buttons below viewfinder */}
       {cameraState === 'ready' && (
         <div className="flex gap-2">
-          {placingState === 'ready' && (
+          {phase === 'ready' && (
             <button
-              onClick={e => { e.stopPropagation(); handleAnalyze() }}
+              onClick={handleAnalyze}
               className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-sm transition-colors"
               style={{ minHeight: 44 }}
             >
               🔍 Analyze green
             </button>
           )}
-          {(placingState === 'ready' || placingState === 'done') && (
+          {(phase === 'ready' || phase === 'done') && (
             <button
-              onClick={e => { e.stopPropagation(); handleReset() }}
+              onClick={handleReset}
               className="py-3 px-4 rounded-xl border border-green-700 text-green-400 text-sm font-semibold hover:bg-green-900 transition-colors"
               style={{ minHeight: 44 }}
             >
