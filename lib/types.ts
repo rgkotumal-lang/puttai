@@ -1,3 +1,13 @@
+export interface GreenAnalysis {
+  breakDirection: 'left' | 'right' | 'straight'
+  breakIntensity: number    // 1–5
+  greenSpeed: number        // stimp 6–14
+  slope: 'uphill' | 'downhill' | 'flat'
+  grain: 'with' | 'against' | 'neutral'
+  confidence: number        // 0–100
+  notes: string
+}
+
 export interface PuttData {
   id: string
   timestamp: number
@@ -6,8 +16,10 @@ export interface PuttData {
   breakDirection: 'left' | 'right' | 'straight'
   breakIntensity: number
   greenSpeed: number
+  slope: 'uphill' | 'downhill' | 'flat'
+  grain: 'with' | 'against' | 'neutral'
   aimOffsetInches: number
-  targetX: number
+  targetX: number           // user-tapped hole position (normalized 0–1)
   targetY: number
   ballX: number
   ballY: number

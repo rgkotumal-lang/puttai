@@ -2,11 +2,9 @@
 
 import { useState, useRef } from 'react'
 import TipCard from '@/components/ui/TipCard'
-import { getLastPutt, saveShotResult, generateId, getAllResults } from '@/lib/storage'
+import { getLastPutt, saveShotResult, getAllResults } from '@/lib/storage'
 import { calcMissDistance, calcMissDirection } from '@/lib/calculations'
 import { CoachingTip, ShotResult } from '@/lib/types'
-
-const HOLE = { x: 0.447, y: 0.147 }
 
 interface ReviewScreenProps {
   onNavigateToAim: () => void
@@ -25,13 +23,18 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
 
   const putt = getLastPutt()
 
+  // Use hole position from putt data (user-tapped, dynamic)
+  const holeX = putt?.targetX ?? 0.447
+  const holeY = putt?.targetY ?? 0.147
+
   function handleSvgClick(e: React.MouseEvent<SVGSVGElement>) {
     const svg = svgRef.current
     if (!svg) return
     const rect = svg.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width
-    const y = (e.clientY - rect.top) / rect.height
-    setActualPos({ x, y })
+    setActualPos({
+      x: (e.clientX - rect.left) / rect.width,
+      y: (e.clientY - rect.top) / rect.height,
+    })
     haptic()
   }
 
@@ -41,9 +44,10 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
     if (!svg) return
     const touch = e.changedTouches[0]
     const rect = svg.getBoundingClientRect()
-    const x = (touch.clientX - rect.left) / rect.width
-    const y = (touch.clientY - rect.top) / rect.height
-    setActualPos({ x, y })
+    setActualPos({
+      x: (touch.clientX - rect.left) / rect.width,
+      y: (touch.clientY - rect.top) / rect.height,
+    })
     haptic()
   }
 
@@ -52,10 +56,8 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
     haptic()
     setPhase('loading')
 
-    const missDistanceInches = calcMissDistance(HOLE.x, HOLE.y, actualPos.x, actualPos.y)
-    const missDirection = calcMissDirection(
-      HOLE.x, HOLE.y, actualPos.x, actualPos.y, putt.breakDirection
-    )
+    const missDistanceInches = calcMissDistance(holeX, holeY, actualPos.x, actualPos.y)
+    const missDirection = calcMissDirection(holeX, holeY, actualPos.x, actualPos.y, putt.breakDirection)
 
     const newResult: ShotResult = {
       puttId: putt.id,
@@ -111,9 +113,8 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
   if (phase === 'place') {
     const W = 280
     const H = 220
-    const hx = HOLE.x * W
-    const hy = HOLE.y * H + 20
-
+    const hx = holeX * W
+    const hy = holeY * H + 20
     const bx = putt ? putt.ballX * W : W * 0.5
     const by = putt ? putt.ballY * H : H * 0.8
     const cpx = putt
@@ -140,39 +141,23 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
           onTouchEnd={handleSvgTouch}
           style={{ touchAction: 'none' }}
         >
-          {/* Green surface */}
           <rect width={W} height={H} fill="#1a3a1a" rx={12} />
-
-          {/* Grid */}
           {[1, 2, 3, 4].map(i => (
             <g key={i}>
               <line x1={(W / 5) * i} y1={0} x2={(W / 5) * i} y2={H} stroke="#2d5a2d" strokeWidth={0.5} />
               <line x1={0} y1={(H / 5) * i} x2={W} y2={(H / 5) * i} stroke="#2d5a2d" strokeWidth={0.5} />
             </g>
           ))}
-
-          {/* Target path from ball to hole */}
           <path
             d={`M ${bx} ${by} Q ${cpx} ${cpy} ${hx} ${hy}`}
-            fill="none"
-            stroke="rgba(76,175,80,0.5)"
-            strokeWidth={1.5}
-            strokeDasharray="6 4"
+            fill="none" stroke="rgba(76,175,80,0.5)" strokeWidth={1.5} strokeDasharray="6 4"
           />
-
-          {/* Hole */}
           <circle cx={hx} cy={hy} r={8} fill="#111" stroke="white" strokeWidth={1.5} />
           <line x1={hx} y1={hy - 8} x2={hx} y2={hy - 28} stroke="white" strokeWidth={1.5} />
-          <polygon
-            points={`${hx},${hy - 28} ${hx + 10},${hy - 22} ${hx},${hy - 16}`}
-            fill="#ef4444"
-          />
-
-          {/* Actual position */}
+          <polygon points={`${hx},${hy - 28} ${hx + 10},${hy - 22} ${hx},${hy - 16}`} fill="#ef4444" />
           {ax !== null && ay !== null && (
             <circle cx={ax} cy={ay} r={7} fill="#ffb74d" stroke="#fff" strokeWidth={1.5} />
           )}
-
           <text x={W / 2} y={H - 8} textAnchor="middle" fontSize={10} fill="#4caf50" opacity={0.6}>
             {actualPos ? 'Tap to reposition' : 'Tap to place ball'}
           </text>
@@ -196,14 +181,10 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
       <div className="flex flex-col gap-4 pb-2">
         <h2 className="text-lg font-bold text-green-300">Analyzing shot…</h2>
         <div className="grid grid-cols-2 gap-3">
-          {[0, 1].map(i => (
-            <div key={i} className="skeleton h-24 rounded-xl" />
-          ))}
+          {[0, 1].map(i => <div key={i} className="skeleton h-24 rounded-xl" />)}
         </div>
         <div className="skeleton h-6 w-1/2 rounded" />
-        {[0, 1, 2].map(i => (
-          <div key={i} className="skeleton h-20 rounded-xl" />
-        ))}
+        {[0, 1, 2].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}
         <div className="flex items-center justify-center gap-2 py-4">
           <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-green-400 text-sm">Getting AI recommendations…</span>
@@ -217,8 +198,8 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
 
   const W = 120
   const H = 100
-  const hx = HOLE.x * W
-  const hy = HOLE.y * H + 10
+  const hx = holeX * W
+  const hy = holeY * H + 10
   const bx = putt.ballX * W
   const by = putt.ballY * H
   const ax = result.actualX * W
@@ -239,51 +220,35 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
         )}
       </div>
 
-      {/* Side-by-side comparison */}
       <div className="grid grid-cols-2 gap-3">
         <MiniGreen
           label="Target line"
-          hx={hx} hy={hy}
-          bx={bx} by={by}
-          showTarget
-          breakDir={putt.breakDirection}
-          breakInt={putt.breakIntensity}
+          hx={hx} hy={hy} bx={bx} by={by}
+          showTarget breakDir={putt.breakDirection} breakInt={putt.breakIntensity}
           W={W} H={H}
         />
         <MiniGreen
           label="Actual result"
-          hx={hx} hy={hy}
-          bx={bx} by={by}
-          ax={ax} ay={ay}
-          made={made}
+          hx={hx} hy={hy} bx={bx} by={by}
+          ax={ax} ay={ay} made={made}
           W={W} H={H}
         />
       </div>
 
-      {/* Miss distance badge */}
-      <div
-        className={`rounded-xl px-4 py-3 text-center ${made ? 'bg-green-800' : 'bg-green-900 border border-green-700'}`}
-      >
+      <div className={`rounded-xl px-4 py-3 text-center ${made ? 'bg-green-800' : 'bg-green-900 border border-green-700'}`}>
         {made ? (
           <span className="text-green-300 font-bold text-lg">🎯 Made it!</span>
         ) : (
           <span className="text-green-200 font-semibold text-base">
-            Missed by{' '}
-            <span className="text-gold">{result.missDistanceInches.toFixed(1)}"</span>
-            {' '}
-            <span className="capitalize text-green-400">{result.missDirection}</span>
+            Missed by <span className="text-gold">{result.missDistanceInches.toFixed(1)}"</span>
+            {' '}<span className="capitalize text-green-400">{result.missDirection}</span>
           </span>
         )}
       </div>
 
-      {/* AI tips */}
       <div>
-        <h3 className="text-[12px] text-green-400 uppercase tracking-wider mb-2">
-          AI Recommendations
-        </h3>
-        {result.tips.map(tip => (
-          <TipCard key={tip.id} tip={tip} />
-        ))}
+        <h3 className="text-[12px] text-green-400 uppercase tracking-wider mb-2">AI Recommendations</h3>
+        {result.tips.map(tip => <TipCard key={tip.id} tip={tip} />)}
       </div>
 
       <button
@@ -297,17 +262,10 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
   )
 }
 
-function MiniGreen({
-  label, hx, hy, bx, by, ax, ay, made, showTarget, breakDir, breakInt, W, H,
-}: {
-  label: string
-  hx: number; hy: number
-  bx: number; by: number
-  ax?: number; ay?: number
-  made?: boolean
-  showTarget?: boolean
-  breakDir?: string; breakInt?: number
-  W: number; H: number
+function MiniGreen({ label, hx, hy, bx, by, ax, ay, made, showTarget, breakDir, breakInt, W, H }: {
+  label: string; hx: number; hy: number; bx: number; by: number
+  ax?: number; ay?: number; made?: boolean; showTarget?: boolean
+  breakDir?: string; breakInt?: number; W: number; H: number
 }) {
   const cpx = showTarget
     ? (bx + hx) / 2 + (breakDir === 'left' ? -(breakInt ?? 3) * 6 : breakDir === 'right' ? (breakInt ?? 3) * 6 : 0)
@@ -320,13 +278,12 @@ function MiniGreen({
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="w-full">
         <rect width={W} height={H} fill="#1a3a1a" rx={6} />
         {showTarget ? (
-          <path
-            d={`M ${bx} ${by} Q ${cpx} ${cpy} ${hx} ${hy}`}
-            fill="none" stroke="rgba(76,175,80,0.7)" strokeWidth={1.5} strokeDasharray="4 3"
-          />
+          <path d={`M ${bx} ${by} Q ${cpx} ${cpy} ${hx} ${hy}`}
+            fill="none" stroke="rgba(76,175,80,0.7)" strokeWidth={1.5} strokeDasharray="4 3" />
         ) : (
           ax !== undefined && ay !== undefined && (
-            <line x1={bx} y1={by} x2={ax} y2={ay} stroke={made ? '#4caf50' : '#ffb74d'} strokeWidth={1.5} strokeDasharray="3 2" />
+            <line x1={bx} y1={by} x2={ax} y2={ay}
+              stroke={made ? '#4caf50' : '#ffb74d'} strokeWidth={1.5} strokeDasharray="3 2" />
           )
         )}
         <circle cx={hx} cy={hy} r={5} fill="#111" stroke="white" strokeWidth={1} />
