@@ -19,10 +19,13 @@ export interface PuttData {
   slope: 'uphill' | 'downhill' | 'flat'
   grain: 'with' | 'against' | 'neutral'
   aimOffsetInches: number
-  targetX: number           // user-tapped hole position (normalized 0–1)
+  targetX: number
   targetY: number
   ballX: number
   ballY: number
+  slopeDegrees?: number       // measured along-putt tilt in degrees
+  crossSlopeDegrees?: number  // measured left-right tilt (positive = right is lower)
+  confirmedGreenSpeed?: number // user-entered stimp value
 }
 
 export interface ShotResult {

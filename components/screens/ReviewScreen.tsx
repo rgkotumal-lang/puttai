@@ -2,9 +2,9 @@
 
 import { useState, useRef } from 'react'
 import TipCard from '@/components/ui/TipCard'
-import { getLastPutt, saveShotResult, getAllResults } from '@/lib/storage'
-import { calcMissDistance, calcMissDirection } from '@/lib/calculations'
-import { CoachingTip, ShotResult } from '@/lib/types'
+import { getLastPutt, saveShotResult, getAllResults, getAllPutts } from '@/lib/storage'
+import { calcMissDistance, calcMissDirection, speedLabel } from '@/lib/calculations'
+import { CoachingTip, PuttData, ShotResult } from '@/lib/types'
 
 interface ReviewScreenProps {
   onNavigateToAim: () => void
@@ -107,7 +107,9 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
     onNavigateToAim()
   }
 
-  const puttNumber = getAllResults().length
+  const allPutts = getAllPutts()
+  const allResults = getAllResults()
+  const puttNumber = allResults.length
 
   // ——— Placement phase ———
   if (phase === 'place') {
@@ -246,10 +248,80 @@ export default function ReviewScreen({ onNavigateToAim }: ReviewScreenProps) {
         )}
       </div>
 
+      {/* Putt conditions summary */}
+      <div className="bg-green-900 rounded-xl px-4 py-3">
+        <h3 className="text-[11px] text-green-500 uppercase tracking-wider mb-2">Putt conditions</h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <span className="text-[12px] text-green-500">Distance</span>
+          <span className="text-[13px] font-semibold text-green-300">{putt.distance.toFixed(1)} ft</span>
+          <span className="text-[12px] text-green-500">Green speed (AI)</span>
+          <span className="text-[13px] font-semibold text-green-300">
+            {putt.greenSpeed} — {speedLabel(putt.greenSpeed)}
+          </span>
+          {putt.confirmedGreenSpeed !== undefined && (
+            <>
+              <span className="text-[12px] text-green-500">Confirmed stimp</span>
+              <span className="text-[13px] font-semibold text-green-300">{putt.confirmedGreenSpeed}</span>
+            </>
+          )}
+          <span className="text-[12px] text-green-500">Slope</span>
+          <span className="text-[13px] font-semibold text-green-300 capitalize">{putt.slope}</span>
+          {putt.slopeDegrees !== undefined && (
+            <>
+              <span className="text-[12px] text-green-500">Along tilt</span>
+              <span className="text-[13px] font-semibold text-green-300">
+                {putt.slopeDegrees > 0 ? '+' : ''}{putt.slopeDegrees.toFixed(1)}°
+              </span>
+            </>
+          )}
+          {putt.crossSlopeDegrees !== undefined && (
+            <>
+              <span className="text-[12px] text-green-500">Cross tilt</span>
+              <span className="text-[13px] font-semibold text-green-300">
+                {putt.crossSlopeDegrees > 0 ? '+' : ''}{putt.crossSlopeDegrees.toFixed(1)}°
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
       <div>
         <h3 className="text-[12px] text-green-400 uppercase tracking-wider mb-2">AI Recommendations</h3>
         {result.tips.map(tip => <TipCard key={tip.id} tip={tip} />)}
       </div>
+
+      {/* Session putt history */}
+      {allPutts.length > 1 && (
+        <div className="bg-green-900 rounded-xl px-4 py-3">
+          <h3 className="text-[11px] text-green-500 uppercase tracking-wider mb-2">
+            Session history ({allPutts.length} putts)
+          </h3>
+          <div className="flex flex-col gap-1.5">
+            {[...allPutts].reverse().map((p, i) => {
+              const r = allResults.find(r => r.puttId === p.id)
+              const made = r?.missDirection === 'made'
+              const isCurrent = p.id === putt.id
+              return (
+                <div
+                  key={p.id}
+                  className={`flex items-center justify-between py-1.5 px-2 rounded-lg ${isCurrent ? 'bg-green-800' : 'bg-green-950'}`}
+                >
+                  <span className="text-[11px] text-green-500">#{allPutts.length - i}</span>
+                  <span className="text-[12px] text-green-300">{p.distance.toFixed(1)} ft</span>
+                  <span className="text-[11px] text-green-400 capitalize">{p.breakDirection}</span>
+                  {r ? (
+                    <span className={`text-[11px] font-semibold ${made ? 'text-green-400' : 'text-amber-400'}`}>
+                      {made ? 'Made' : `${r.missDistanceInches.toFixed(0)}" ${r.missDirection}`}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-green-700">pending</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <button
         onClick={handleNextPutt}

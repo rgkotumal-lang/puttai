@@ -1,20 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import CameraViewfinder from '@/components/ui/CameraViewfinder'
+import CameraViewfinder, { AnalysisResult } from '@/components/ui/CameraViewfinder'
+import GreenSpeedPicker from '@/components/ui/GreenSpeedPicker'
 import { calcDistance, calcAimOffset, speedLabel } from '@/lib/calculations'
 import { savePutt, generateId, getAllPutts } from '@/lib/storage'
-import { GreenAnalysis } from '@/lib/types'
 
 interface AimScreenProps {
   onNavigateToReview: () => void
-}
-
-interface AnalysisResult {
-  ballPos: { x: number; y: number }
-  holePos: { x: number; y: number }
-  analysis: GreenAnalysis
-  distanceFt?: number
 }
 
 function haptic() {
@@ -25,6 +18,7 @@ const intensityLabels = ['Subtle', 'Gentle', 'Medium', 'Strong', 'Sharp']
 
 export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [confirmedGreenSpeed, setConfirmedGreenSpeed] = useState<number>(10)
   const [saving, setSaving] = useState(false)
 
   function handleAnalysisComplete(data: AnalysisResult) {
@@ -39,7 +33,7 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
     if (!result) return
     haptic()
     setSaving(true)
-    const { ballPos, holePos, analysis, distanceFt } = result
+    const { ballPos, holePos, analysis, distanceFt, slopeDegrees, crossSlopeDegrees } = result
     const distance = distanceFt ?? calcDistance(ballPos.x, ballPos.y, holePos.x, holePos.y)
     const aimOffsetInches = calcAimOffset(analysis.breakDirection, analysis.breakIntensity)
     const putt = {
@@ -57,6 +51,9 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
       targetY: holePos.y,
       ballX: ballPos.x,
       ballY: ballPos.y,
+      slopeDegrees,
+      crossSlopeDegrees,
+      confirmedGreenSpeed,
     }
     savePutt(putt)
     setSaving(false)
@@ -72,9 +69,12 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
 
   return (
     <div className="flex flex-col gap-4 pb-2">
+      <GreenSpeedPicker onChange={setConfirmedGreenSpeed} />
+
       <CameraViewfinder
         onAnalysisComplete={handleAnalysisComplete}
         onReset={handleReset}
+        confirmedGreenSpeed={confirmedGreenSpeed}
       />
 
       {!result && (
@@ -113,7 +113,8 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
                     : `${intensityLabels[result.analysis.breakIntensity - 1]} ${result.analysis.breakDirection}`
                 }
               />
-              <Row label="Green speed" value={`${result.analysis.greenSpeed} — ${speedLabel(result.analysis.greenSpeed)}`} />
+              <Row label="Green speed (AI)" value={`${result.analysis.greenSpeed} — ${speedLabel(result.analysis.greenSpeed)}`} />
+              <Row label="Confirmed stimp" value={`${confirmedGreenSpeed}`} />
               <Row
                 label="Slope"
                 value={result.analysis.slope.charAt(0).toUpperCase() + result.analysis.slope.slice(1)}
@@ -122,6 +123,12 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
                 label="Grain"
                 value={result.analysis.grain.charAt(0).toUpperCase() + result.analysis.grain.slice(1)}
               />
+              {result.slopeDegrees !== undefined && (
+                <>
+                  <Row label="Along tilt" value={`${result.slopeDegrees > 0 ? '+' : ''}${result.slopeDegrees.toFixed(1)}°`} />
+                  <Row label="Cross tilt" value={`${result.crossSlopeDegrees !== undefined && result.crossSlopeDegrees > 0 ? '+' : ''}${result.crossSlopeDegrees?.toFixed(1) ?? '—'}°`} />
+                </>
+              )}
             </div>
             {result.analysis.notes && (
               <p className="text-[11px] text-green-500 mt-2 italic border-t border-green-800 pt-2">

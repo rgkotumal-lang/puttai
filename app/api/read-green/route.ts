@@ -25,12 +25,27 @@ export async function POST(req: Request) {
     holePos = body.holePos ?? holePos
     const distanceFt: number | undefined = body.distanceFt
     const fromHole: boolean = body.perspective === 'from_hole'
+    const slopeDegrees: number | undefined = body.slopeDegrees
+    const crossSlopeDegrees: number | undefined = body.crossSlopeDegrees
+    const confirmedGreenSpeed: number | undefined = body.confirmedGreenSpeed
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const contextLine = fromHole
       ? `The golfer is STANDING AT THE HOLE looking back toward their ball${distanceFt ? `, which is ${distanceFt.toFixed(1)} feet away` : ''}. The bottom of this image is the hole location. Break direction is relative to the golfer at the ball looking toward the hole (not your current viewing direction).`
       : `The golfer's ball is at image position (${ballPos.x.toFixed(2)}, ${ballPos.y.toFixed(2)}) and the hole is at (${holePos.x.toFixed(2)}, ${holePos.y.toFixed(2)}), where (0,0) is top-left and (1,1) is bottom-right.`
+
+    const sensorLines: string[] = []
+    if (slopeDegrees !== undefined)
+      sensorLines.push(`Accelerometer along-putt tilt: ${slopeDegrees.toFixed(1)}° (negative = uphill toward hole, positive = downhill).`)
+    if (crossSlopeDegrees !== undefined)
+      sensorLines.push(`Accelerometer cross-putt tilt: ${crossSlopeDegrees.toFixed(1)}° (negative = left side lower, positive = right side lower).`)
+    if (confirmedGreenSpeed !== undefined)
+      sensorLines.push(`User-confirmed green speed: stimp ${confirmedGreenSpeed}. Use this for the greenSpeed field instead of estimating from visuals.`)
+
+    const sensorContext = sensorLines.length > 0
+      ? `\nSENSOR DATA (high-confidence, prioritize over visual estimates):\n${sensorLines.join('\n')}`
+      : ''
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -48,6 +63,7 @@ export async function POST(req: Request) {
               text: `You are an expert golf caddie reading a putting green from a phone camera.
 
 ${contextLine}
+${sensorContext}
 
 Analyze the image and return ONLY valid JSON (no markdown, no explanation):
 {
@@ -60,7 +76,7 @@ Analyze the image and return ONLY valid JSON (no markdown, no explanation):
   "notes": "one sentence describing the key read"
 }
 
-Base your read on: visible contours, grass color/texture gradients, shadows, grain sheen, surrounding terrain. If the image is too unclear, use confidence below 40 and sensible defaults.`,
+Base your read on: visible contours, grass color/texture gradients, shadows, grain sheen, surrounding terrain. Incorporate any sensor data provided above. If the image is too unclear, use confidence below 40 and sensible defaults.`,
             },
           ],
         },
