@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { GreenAnalysis } from '@/lib/types'
 
+export const maxDuration = 30
+
 const FALLBACK: GreenAnalysis = {
   breakDirection: 'straight',
   breakIntensity: 2,
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
     ballPos = body.ballPos ?? ballPos
     holePos = body.holePos ?? holePos
 
-    const client = new Anthropic()
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',

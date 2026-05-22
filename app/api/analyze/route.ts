@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
+export const maxDuration = 30
+
 function speedLabel(stimp: number): string {
   if (stimp <= 7) return 'slow — use a full, committed stroke'
   if (stimp <= 9) return 'medium — normal stroke pace'
@@ -34,7 +36,7 @@ export async function POST(req: Request) {
     putt = body.putt ?? {}
     result = body.result ?? {}
 
-    const client = new Anthropic()
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const prompt = `You are an expert golf putting coach with 20+ years of experience.
 A golfer just attempted a putt. Analyze the data and give specific, actionable coaching tips.
