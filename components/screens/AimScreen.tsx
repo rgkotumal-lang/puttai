@@ -14,6 +14,7 @@ interface AnalysisResult {
   ballPos: { x: number; y: number }
   holePos: { x: number; y: number }
   analysis: GreenAnalysis
+  distanceFt?: number
 }
 
 function haptic() {
@@ -38,8 +39,8 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
     if (!result) return
     haptic()
     setSaving(true)
-    const { ballPos, holePos, analysis } = result
-    const distance = calcDistance(ballPos.x, ballPos.y, holePos.x, holePos.y)
+    const { ballPos, holePos, analysis, distanceFt } = result
+    const distance = distanceFt ?? calcDistance(ballPos.x, ballPos.y, holePos.x, holePos.y)
     const aimOffsetInches = calcAimOffset(analysis.breakDirection, analysis.breakIntensity)
     const putt = {
       id: generateId(),
@@ -63,7 +64,7 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
   }
 
   const distance = result
-    ? calcDistance(result.ballPos.x, result.ballPos.y, result.holePos.x, result.holePos.y)
+    ? (result.distanceFt ?? calcDistance(result.ballPos.x, result.ballPos.y, result.holePos.x, result.holePos.y))
     : null
   const aimOffsetInches = result
     ? calcAimOffset(result.analysis.breakDirection, result.analysis.breakIntensity)
