@@ -178,8 +178,8 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
 
       // ── Perspective grid ──
       const spreadW = W * 1.5
-      ctx.strokeStyle = 'rgba(255,255,255,0.11)'
-      ctx.lineWidth = 0.8
+      ctx.strokeStyle = 'rgba(255,255,255,0.32)'
+      ctx.lineWidth = 1
       ctx.setLineDash([])
       const fanN = 14
       for (let i = 0; i <= fanN; i++) {
@@ -241,11 +241,11 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
       ctx.restore()
 
       // ── Ball marker ──
-      ctx.shadowColor = 'rgba(255,255,255,0.55)'; ctx.shadowBlur = 10
+      ctx.shadowColor = CYAN; ctx.shadowBlur = 12
       ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2)
-      ctx.fillStyle = 'white'; ctx.fill()
+      ctx.fillStyle = CYAN; ctx.fill()
       ctx.shadowBlur = 0
-      ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke()
     }
 
     rafRef.current = requestAnimationFrame(draw)
