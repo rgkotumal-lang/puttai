@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
+export const maxDuration = 30
+
 function speedLabel(stimp: number): string {
   if (stimp <= 7) return 'slow — use a full, committed stroke'
   if (stimp <= 9) return 'medium — normal stroke pace'
@@ -34,7 +36,15 @@ export async function POST(req: Request) {
     putt = body.putt ?? {}
     result = body.result ?? {}
 
-    const client = new Anthropic()
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    const slopeLines: string[] = []
+    if (putt.slopeDegrees !== undefined)
+      slopeLines.push(`- Along-putt tilt: ${(putt.slopeDegrees as number).toFixed(1)}° (negative = uphill, positive = downhill)`)
+    if (putt.crossSlopeDegrees !== undefined)
+      slopeLines.push(`- Cross-putt tilt: ${(putt.crossSlopeDegrees as number).toFixed(1)}° (negative = left side lower)`)
+    if (putt.confirmedGreenSpeed !== undefined)
+      slopeLines.push(`- Golfer-confirmed green speed: stimp ${putt.confirmedGreenSpeed} (vs AI estimate of ${putt.greenSpeed})`)
 
     const prompt = `You are an expert golf putting coach with 20+ years of experience.
 A golfer just attempted a putt. Analyze the data and give specific, actionable coaching tips.
@@ -43,8 +53,8 @@ PUTT DATA:
 - Distance: ${(putt.distance as number).toFixed(1)} feet
 - Break direction: ${putt.breakDirection}
 - Break intensity: ${putt.breakIntensity}/5
-- Green speed (stimp): ${putt.greenSpeed}
-- Aimed: ${Math.abs(putt.aimOffsetInches as number).toFixed(1)} inches ${(putt.aimOffsetInches as number) > 0 ? 'left' : 'right'} of cup
+- Green speed (stimp): ${putt.confirmedGreenSpeed ?? putt.greenSpeed}
+- Aimed: ${Math.abs(putt.aimOffsetInches as number).toFixed(1)} inches ${(putt.aimOffsetInches as number) > 0 ? 'left' : 'right'} of cup${slopeLines.length > 0 ? `\n${slopeLines.join('\n')}` : ''}
 
 RESULT:
 - Ball finished: ${(result.missDistanceInches as number).toFixed(1)} inches from cup

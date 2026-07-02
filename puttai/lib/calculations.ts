@@ -1,13 +1,16 @@
 import { PuttData, ShotResult, SessionStats } from './types'
 
-const HOLE_X = 0.447
-const HOLE_Y = 0.147
 const VIEWFINDER_FEET = 20
 const VIEWFINDER_WIDTH_FEET = 6
 
-export function calcDistance(ballX: number, ballY: number): number {
-  const dx = (ballX - HOLE_X) * VIEWFINDER_FEET
-  const dy = (ballY - HOLE_Y) * VIEWFINDER_FEET
+export function calcDistance(
+  ballX: number,
+  ballY: number,
+  holeX: number,
+  holeY: number
+): number {
+  const dx = (ballX - holeX) * VIEWFINDER_FEET
+  const dy = (ballY - holeY) * VIEWFINDER_FEET
   return Math.sqrt(dx * dx + dy * dy)
 }
 
@@ -45,7 +48,7 @@ export function calcMissDirection(
   targetY: number,
   actualX: number,
   actualY: number,
-  breakDirection: 'left' | 'right' | 'straight'
+  _breakDirection: 'left' | 'right' | 'straight'
 ): 'left' | 'right' | 'long' | 'short' | 'made' {
   const missInches = calcMissDistance(targetX, targetY, actualX, actualY)
   if (missInches < 3) return 'made'

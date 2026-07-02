@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import CameraViewfinder from '@/components/ui/CameraViewfinder'
+import { useState } from 'react'
+import CameraViewfinder, { AnalysisResult } from '@/components/ui/CameraViewfinder'
+import GreenSpeedPicker from '@/components/ui/GreenSpeedPicker'
 import { calcDistance, calcAimOffset, speedLabel } from '@/lib/calculations'
 import { savePutt, generateId, getAllPutts } from '@/lib/storage'
-
-const HOLE = { x: 0.447, y: 0.147 }
 
 interface AimScreenProps {
   onNavigateToReview: () => void
@@ -18,195 +17,145 @@ function haptic() {
 const intensityLabels = ['Subtle', 'Gentle', 'Medium', 'Strong', 'Sharp']
 
 export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
-  const [ballPosition, setBallPosition] = useState({ x: 0.5, y: 0.78 })
-  const [greenSpeed, setGreenSpeed] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return Number(localStorage.getItem('puttai_default_stimp') ?? '10.5')
-    }
-    return 10.5
-  })
-  const [breakDirection, setBreakDirection] = useState<'left' | 'right' | 'straight'>('left')
-  const [breakIntensity, setBreakIntensity] = useState(3)
+  const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [confirmedGreenSpeed, setConfirmedGreenSpeed] = useState<number>(10)
   const [saving, setSaving] = useState(false)
 
-  const distance = calcDistance(ballPosition.x, ballPosition.y)
-  const aimOffsetInches = calcAimOffset(breakDirection, breakIntensity)
-  const speed = speedLabel(greenSpeed)
-  const confidence = Math.min(97, 75 + breakIntensity * 3 + (greenSpeed > 10 ? 5 : 0))
+  function handleAnalysisComplete(data: AnalysisResult) {
+    setResult(data)
+  }
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('puttai_default_stimp', String(greenSpeed))
-    }
-  }, [greenSpeed])
+  function handleReset() {
+    setResult(null)
+  }
 
   function handleShot() {
+    if (!result) return
     haptic()
     setSaving(true)
+    const { ballPos, holePos, analysis, distanceFt, slopeDegrees, crossSlopeDegrees } = result
+    const distance = distanceFt ?? calcDistance(ballPos.x, ballPos.y, holePos.x, holePos.y)
+    const aimOffsetInches = calcAimOffset(analysis.breakDirection, analysis.breakIntensity)
     const putt = {
       id: generateId(),
       timestamp: Date.now(),
       holeNumber: getAllPutts().length + 1,
       distance,
-      breakDirection,
-      breakIntensity,
-      greenSpeed,
+      breakDirection: analysis.breakDirection,
+      breakIntensity: analysis.breakIntensity,
+      greenSpeed: analysis.greenSpeed,
+      slope: analysis.slope,
+      grain: analysis.grain,
       aimOffsetInches,
-      targetX: HOLE.x,
-      targetY: HOLE.y,
-      ballX: ballPosition.x,
-      ballY: ballPosition.y,
+      targetX: holePos.x,
+      targetY: holePos.y,
+      ballX: ballPos.x,
+      ballY: ballPos.y,
+      slopeDegrees,
+      crossSlopeDegrees,
+      confirmedGreenSpeed,
     }
     savePutt(putt)
     setSaving(false)
     onNavigateToReview()
   }
 
-  function handleReset() {
-    setBallPosition({ x: 0.5, y: 0.78 })
-    setBreakDirection('left')
-    setBreakIntensity(3)
-  }
+  const distance = result
+    ? (result.distanceFt ?? calcDistance(result.ballPos.x, result.ballPos.y, result.holePos.x, result.holePos.y))
+    : null
+  const aimOffsetInches = result
+    ? calcAimOffset(result.analysis.breakDirection, result.analysis.breakIntensity)
+    : null
 
   return (
     <div className="flex flex-col gap-4 pb-2">
+      <GreenSpeedPicker onChange={setConfirmedGreenSpeed} />
+
       <CameraViewfinder
-        breakDirection={breakDirection}
-        breakIntensity={breakIntensity}
-        greenSpeed={greenSpeed}
-        onBallPositionChange={setBallPosition}
+        onAnalysisComplete={handleAnalysisComplete}
+        onReset={handleReset}
+        confirmedGreenSpeed={confirmedGreenSpeed}
       />
 
-      <p className="text-center text-[11px] text-green-500">Tap viewfinder to reposition ball</p>
-
-      {/* Green speed */}
-      <div className="bg-green-900 rounded-xl px-4 py-3">
-        <div className="flex justify-between items-center mb-2">
-          <label className="text-[12px] text-green-400 uppercase tracking-wider">Green speed (stimp)</label>
-          <span className="text-sm font-bold text-green-300">
-            {greenSpeed.toFixed(1)} — {speed}
-          </span>
+      {!result && (
+        <div className="bg-green-900 rounded-xl px-4 py-4 text-center">
+          <p className="text-green-400 text-sm">
+            Mark your ball, then the hole — AI will read the break and speed for you.
+          </p>
         </div>
-        <input
-          type="range"
-          min={6}
-          max={14}
-          step={0.5}
-          value={greenSpeed}
-          onChange={e => setGreenSpeed(Number(e.target.value))}
-          className="w-full accent-green-500"
-        />
-      </div>
+      )}
 
-      {/* Break direction */}
-      <div className="bg-green-900 rounded-xl px-4 py-3">
-        <label className="text-[12px] text-green-400 uppercase tracking-wider block mb-2">
-          Break direction
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {(['left', 'straight', 'right'] as const).map(dir => (
-            <button
-              key={dir}
-              onClick={() => { setBreakDirection(dir); haptic() }}
-              className={`py-2 rounded-lg text-sm font-semibold transition-colors ${
-                breakDirection === dir
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-800 text-green-300'
-              }`}
-            >
-              {dir === 'left' ? '↙ Left' : dir === 'straight' ? '→ Straight' : '↘ Right'}
-            </button>
-          ))}
-        </div>
-      </div>
+      {result && (
+        <>
+          {/* AI Green Read panel */}
+          <div className="bg-green-900 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[11px] text-green-500 uppercase tracking-wider">Green read</h3>
+              <span className="text-[10px] bg-green-800 text-green-400 px-2 py-0.5 rounded-full">
+                AI · {result.analysis.confidence}% confidence
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <Row label="Distance" value={`${distance!.toFixed(1)} ft`} />
+              <Row
+                label="Aim point"
+                value={
+                  aimOffsetInches === 0
+                    ? 'Center cup'
+                    : `${Math.abs(aimOffsetInches!).toFixed(1)}" ${aimOffsetInches! > 0 ? 'left' : 'right'}`
+                }
+              />
+              <Row
+                label="Break"
+                value={
+                  result.analysis.breakDirection === 'straight'
+                    ? 'Straight'
+                    : `${intensityLabels[result.analysis.breakIntensity - 1]} ${result.analysis.breakDirection}`
+                }
+              />
+              <Row label="Green speed (AI)" value={`${result.analysis.greenSpeed} — ${speedLabel(result.analysis.greenSpeed)}`} />
+              <Row label="Confirmed stimp" value={`${confirmedGreenSpeed}`} />
+              <Row
+                label="Slope"
+                value={result.analysis.slope.charAt(0).toUpperCase() + result.analysis.slope.slice(1)}
+              />
+              <Row
+                label="Grain"
+                value={result.analysis.grain.charAt(0).toUpperCase() + result.analysis.grain.slice(1)}
+              />
+              {result.slopeDegrees !== undefined && (
+                <>
+                  <Row label="Along tilt" value={`${result.slopeDegrees > 0 ? '+' : ''}${result.slopeDegrees.toFixed(1)}°`} />
+                  <Row label="Cross tilt" value={`${result.crossSlopeDegrees !== undefined && result.crossSlopeDegrees > 0 ? '+' : ''}${result.crossSlopeDegrees?.toFixed(1) ?? '—'}°`} />
+                </>
+              )}
+            </div>
+            {result.analysis.notes && (
+              <p className="text-[11px] text-green-500 mt-2 italic border-t border-green-800 pt-2">
+                {result.analysis.notes}
+              </p>
+            )}
+          </div>
 
-      {/* Break intensity */}
-      <div className="bg-green-900 rounded-xl px-4 py-3">
-        <div className="flex justify-between items-center mb-2">
-          <label className="text-[12px] text-green-400 uppercase tracking-wider">
-            Break intensity
-          </label>
-          <span className="text-sm font-bold text-green-300">
-            {intensityLabels[breakIntensity - 1]}
-          </span>
-        </div>
-        <input
-          type="range"
-          min={1}
-          max={5}
-          step={1}
-          value={breakIntensity}
-          onChange={e => setBreakIntensity(Number(e.target.value))}
-          className="w-full accent-green-500"
-        />
-        <div className="flex justify-between mt-1">
-          {intensityLabels.map(l => (
-            <span key={l} className="text-[9px] text-green-600">{l}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Analysis panel */}
-      <div className="bg-green-900 rounded-xl px-4 py-3">
-        <h3 className="text-[11px] text-green-500 uppercase tracking-wider mb-2">Analysis</h3>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-          <Row label="Distance" value={`${distance.toFixed(1)} ft`} />
-          <Row
-            label="Aim point"
-            value={
-              aimOffsetInches === 0
-                ? 'Center cup'
-                : `${Math.abs(aimOffsetInches).toFixed(1)}" ${aimOffsetInches > 0 ? 'left' : 'right'}`
-            }
-          />
-          <Row
-            label="Slope"
-            value={
-              breakDirection === 'straight'
-                ? 'Flat'
-                : `${intensityLabels[breakIntensity - 1]} ${breakDirection}`
-            }
-          />
-          <Row label="Confidence" value={`${confidence}%`} highlight />
-        </div>
-      </div>
-
-      {/* Actions */}
-      <button
-        onClick={handleShot}
-        disabled={saving}
-        className="w-full py-4 rounded-xl bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold text-base transition-colors disabled:opacity-60"
-        style={{ minHeight: 44 }}
-      >
-        {saving ? 'Saving…' : '📸 Shot taken — analyze result'}
-      </button>
-
-      <button
-        onClick={handleReset}
-        className="w-full py-3 rounded-xl border border-green-700 text-green-400 text-sm font-semibold hover:bg-green-900 active:bg-green-800 transition-colors"
-        style={{ minHeight: 44 }}
-      >
-        ↺ Reset
-      </button>
+          <button
+            onClick={handleShot}
+            disabled={saving}
+            className="w-full py-4 rounded-xl bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold text-base transition-colors disabled:opacity-60"
+            style={{ minHeight: 44 }}
+          >
+            {saving ? 'Saving…' : '📸 Shot taken — analyze result'}
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
-function Row({
-  label,
-  value,
-  highlight,
-}: {
-  label: string
-  value: string
-  highlight?: boolean
-}) {
+function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
       <span className="text-[12px] text-green-500">{label}</span>
-      <span className={`text-[13px] font-semibold ${highlight ? 'text-gold' : 'text-green-300'}`}>
-        {value}
-      </span>
+      <span className="text-[13px] font-semibold text-green-300">{value}</span>
     </>
   )
 }
