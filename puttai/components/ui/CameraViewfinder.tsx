@@ -352,8 +352,11 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
   return (
     <div className="flex flex-col gap-0">
       <div
-        className={`relative w-full overflow-hidden bg-black select-none ${fullscreen ? 'fixed inset-0 z-50' : 'rounded-2xl'}`}
-        style={fullscreen ? {} : { height: 500 }}
+        className="w-full overflow-hidden bg-black select-none"
+        style={fullscreen
+          ? { position: 'fixed', inset: 0, zIndex: 50 }
+          : { position: 'relative', height: 500, borderRadius: '1rem' }
+        }
       >
         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
         <canvas ref={canvasRef} width={640} height={500} className="absolute inset-0 w-full h-full pointer-events-none" />
