@@ -347,18 +347,20 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
     return `${dir} ${cm} cm`
   }
 
+  const fullscreen = phase === 'ball' || phase === 'walk'
+
   return (
     <div className="flex flex-col gap-0">
       <div
-        className="relative w-full overflow-hidden rounded-2xl bg-black select-none"
-        style={{ height: 500 }}
+        className={`relative w-full overflow-hidden bg-black select-none ${fullscreen ? 'fixed inset-0 z-50' : 'rounded-2xl'}`}
+        style={fullscreen ? {} : { height: 500 }}
       >
         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
         <canvas ref={canvasRef} width={640} height={500} className="absolute inset-0 w-full h-full pointer-events-none" />
 
         {/* ── Top instruction banner ── */}
         {(phase === 'ball' || phase === 'walk') && (
-          <div className="absolute top-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+          <div className="absolute left-0 right-0 flex justify-center pointer-events-none z-10" style={{ top: 'max(12px, env(safe-area-inset-top, 12px))' }}>
             <div className="bg-blue-950/80 border border-cyan-500/50 text-cyan-200 text-[11px] font-semibold px-4 py-1.5 rounded-full tracking-wide">
               {phase === 'ball' ? 'Point toward hole · tap Mark Ball' : 'Walk to the hole to mark'}
             </div>
@@ -437,7 +439,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
         )}
 
         {/* ── Bottom action buttons (overlaid on camera) ── */}
-        <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 pointer-events-none">
+        <div className="absolute left-0 right-0 flex items-center justify-center gap-3 pointer-events-none" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
           {phase === 'ball' && cameraState === 'ready' && (
             <div className="pointer-events-auto">
               <PillButton onClick={handleMarkBall}>Mark Ball</PillButton>
