@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { GreenAnalysis } from '@/lib/types'
 import { calcAimOffset } from '@/lib/calculations'
 
@@ -353,16 +354,17 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
   }
 
   const fullscreen = phase === 'ball' || phase === 'walk'
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
-  return (
-    <div className="flex flex-col gap-0">
-      <div
-        className="w-full overflow-hidden bg-black select-none"
-        style={fullscreen
-          ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }
-          : { position: 'relative', height: 500, borderRadius: '1rem' }
-        }
-      >
+  const cameraShell = (
+    <div
+      className="w-full overflow-hidden bg-black select-none"
+      style={fullscreen
+        ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }
+        : { position: 'relative', height: 500, borderRadius: '1rem' }
+      }
+    >
         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
         <canvas ref={canvasRef} width={640} height={500} className="absolute inset-0 w-full h-full pointer-events-none" />
 
@@ -471,7 +473,14 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
             </div>
           )}
         </div>
-      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-0">
+      {fullscreen && mounted
+        ? createPortal(cameraShell, document.body)
+        : cameraShell}
     </div>
   )
 }
