@@ -17,6 +17,7 @@ interface CameraViewfinderProps {
   onAnalysisComplete: (result: AnalysisResult) => void
   onReset: () => void
   confirmedGreenSpeed?: number
+  onCapturing?: (capturing: boolean) => void
 }
 
 type Phase = 'ball' | 'walk' | 'analyzing' | 'done'
@@ -91,7 +92,7 @@ function PillButton({
   )
 }
 
-export default function CameraViewfinder({ onAnalysisComplete, onReset, confirmedGreenSpeed }: CameraViewfinderProps) {
+export default function CameraViewfinder({ onAnalysisComplete, onReset, confirmedGreenSpeed, onCapturing }: CameraViewfinderProps) {
   const videoRef      = useRef<HTMLVideoElement>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const capturedRef   = useRef('')
@@ -110,6 +111,10 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
 
   const stateRef = useRef({ phase, analysis })
   stateRef.current = { phase, analysis }
+
+  useEffect(() => {
+    onCapturing?.(phase === 'ball' || phase === 'walk')
+  }, [phase, onCapturing])
 
   // ── Camera ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -354,7 +359,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
       <div
         className="w-full overflow-hidden bg-black select-none"
         style={fullscreen
-          ? { position: 'fixed', inset: 0, zIndex: 50 }
+          ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }
           : { position: 'relative', height: 500, borderRadius: '1rem' }
         }
       >

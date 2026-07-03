@@ -19,6 +19,7 @@ const intensityLabels = ['Subtle', 'Gentle', 'Medium', 'Strong', 'Sharp']
 export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [confirmedGreenSpeed, setConfirmedGreenSpeed] = useState<number>(10)
+  const [capturing, setCapturing] = useState(false)
   const [saving, setSaving] = useState(false)
 
   function handleAnalysisComplete(data: AnalysisResult) {
@@ -69,12 +70,13 @@ export default function AimScreen({ onNavigateToReview }: AimScreenProps) {
 
   return (
     <div className="flex flex-col gap-4 pb-2">
-      <GreenSpeedPicker onChange={setConfirmedGreenSpeed} />
+      {!capturing && <GreenSpeedPicker onChange={setConfirmedGreenSpeed} />}
 
       <CameraViewfinder
         onAnalysisComplete={handleAnalysisComplete}
         onReset={handleReset}
         confirmedGreenSpeed={confirmedGreenSpeed}
+        onCapturing={setCapturing}
       />
 
       {!result && (
