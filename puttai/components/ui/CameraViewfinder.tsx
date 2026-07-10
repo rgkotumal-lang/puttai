@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { GreenAnalysis } from '@/lib/types'
 import { calcAimOffset } from '@/lib/calculations'
 
@@ -94,7 +93,7 @@ function PillButton({
 }
 
 export default function CameraViewfinder({ onAnalysisComplete, onReset, confirmedGreenSpeed, onCapturing }: CameraViewfinderProps) {
-  const videoRef      = useRef<HTMLVideoElement>(null)
+  const videoRef      = useRef<HTMLVideoElement | null>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const capturedRef   = useRef('')
   const streamRef     = useRef<MediaStream | null>(null)
@@ -103,6 +102,14 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
   const holeGPSRef    = useRef<GPS | null>(null)
   const watchIdRef    = useRef<number | null>(null)
   const distFtRef     = useRef<number | undefined>(undefined)
+
+  const videoCallbackRef = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el
+    if (el && streamRef.current && el.srcObject !== streamRef.current) {
+      el.srcObject = streamRef.current
+      el.play().catch(() => {})
+    }
+  }, [])
 
   const [cameraState, setCameraState] = useState<'loading' | 'ready' | 'denied' | 'unavailable'>('loading')
   const [phase, setPhase]             = useState<Phase>('ball')
@@ -354,8 +361,6 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
   }
 
   const fullscreen = phase === 'ball' || phase === 'walk'
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
 
   const cameraShell = (
     <div
@@ -365,7 +370,20 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
         : { position: 'relative', height: 500, borderRadius: '1rem' }
       }
     >
-        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+        {/* Live camera — hidden once we have a captured image to show */}
+        <video
+          ref={videoCallbackRef} autoPlay playsInline muted
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ display: capturedRef.current ? 'none' : undefined }}
+        />
+        {/* Captured photo shown in analyzing/done phases */}
+        {capturedRef.current && (
+          <img
+            src={`data:image/jpeg;base64,${capturedRef.current}`}
+            className="absolute inset-0 w-full h-full object-cover"
+            alt=""
+          />
+        )}
         <canvas ref={canvasRef} width={640} height={500} className="absolute inset-0 w-full h-full pointer-events-none" />
 
         {/* ── Top instruction banner ── */}
@@ -478,9 +496,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
 
   return (
     <div className="flex flex-col gap-0">
-      {fullscreen && mounted
-        ? createPortal(cameraShell, document.body)
-        : cameraShell}
+      {cameraShell}
     </div>
   )
 }

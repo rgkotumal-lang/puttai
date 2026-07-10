@@ -34,7 +34,8 @@ input, select, textarea {
 }
 
 .screen-enter {
-  animation: fadeInUp 0.2s ease forwards;
+  animation: fadeInUp 0.2s ease;
+  opacity: 1;
 }
 
 @keyframes shimmer {
