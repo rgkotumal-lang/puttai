@@ -100,6 +100,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
   const rafRef        = useRef<number>(0)
   const ballGPSRef    = useRef<GPS | null>(null)
   const holeGPSRef    = useRef<GPS | null>(null)
+  const currentGPSRef = useRef<GPS | null>(null)
   const watchIdRef    = useRef<number | null>(null)
   const distFtRef     = useRef<number | undefined>(undefined)
 
@@ -149,30 +150,27 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
     }
   }, [])
 
-  // ── GPS during walk ──────────────────────────────────────────────────────
+  // ── GPS — start immediately so we have a lock by the time user taps Mark Ball ──
   useEffect(() => {
-    if (phase !== 'walk') {
-      if (watchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null
-      }
-      return
-    }
     if (!navigator.geolocation) { setGpsAvail(false); return }
     watchIdRef.current = navigator.geolocation.watchPosition(
       pos => {
         const curr: GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-        holeGPSRef.current = curr
-        if (ballGPSRef.current) setWalkedFt(haversineDistanceFt(ballGPSRef.current, curr))
+        currentGPSRef.current = curr
+        if (stateRef.current.phase === 'walk' && ballGPSRef.current) {
+          setWalkedFt(haversineDistanceFt(ballGPSRef.current, curr))
+          holeGPSRef.current = curr
+        }
       },
       () => setGpsAvail(false),
       { enableHighAccuracy: true, maximumAge: 0 }
     )
     return () => {
-      if (watchIdRef.current !== null && navigator.geolocation) {
+      if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null
       }
     }
-  }, [phase])
+  }, [])
 
   // ── Canvas RAF loop ──────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -186,7 +184,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
     if (ps === 'done' && an) {
       const bx = W * 0.5, by = H * 0.87
       const sign = an.breakDirection === 'left' ? -1 : an.breakDirection === 'right' ? 1 : 0
-      const hx = W * 0.5 + sign * an.breakIntensity * 14
+      const hx = W * 0.5 + sign * an.breakIntensity * 22
       const hy = H * 0.10
 
       // ── Perspective grid ──
@@ -208,7 +206,7 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
       }
 
       // ── Corridor ──
-      const cpx = (bx + hx) / 2 + sign * an.breakIntensity * 8
+      const cpx = (bx + hx) / 2 + sign * an.breakIntensity * 32
       const cpy = (by + hy) / 2
       const edge = 14
 
@@ -281,7 +279,10 @@ export default function CameraViewfinder({ onAnalysisComplete, onReset, confirme
       cap.getContext('2d')?.drawImage(video, 0, 0, 640, 360)
       capturedRef.current = cap.toDataURL('image/jpeg', 0.82).split(',')[1]
     }
-    if (navigator.geolocation) {
+    // Use already-warmed-up GPS position rather than a cold one-time request
+    if (currentGPSRef.current) {
+      ballGPSRef.current = currentGPSRef.current
+    } else if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         p => { ballGPSRef.current = { lat: p.coords.latitude, lon: p.coords.longitude } },
         () => setGpsAvail(false),
